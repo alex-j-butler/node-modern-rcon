@@ -90,8 +90,6 @@ class Rcon {
       readPoint = 12;
 
       this._recvPacket = { id, type, len, buffer: '' };
-
-      console.log(`begin recv of new packet: ${id}`);
     }
 
     let { id, type } = this._recvPacket;
