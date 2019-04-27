@@ -41,6 +41,7 @@ class Rcon {
     this._callbacks = new Map();
     this._timedOutRequests = [];
     this._authPacketId = null;
+    this._recvPacket = null;
   }
 
   connect() {
@@ -61,6 +62,7 @@ class Rcon {
         this.hasAuthed = false;
         this._tcpSocket = null;
         this._callbacks.clear();
+        this._recvPacket = null;
       });
     });
   }
@@ -76,28 +78,40 @@ class Rcon {
   }
 
   _handleResponse(data) {
-    const len = data.readInt32LE(0);
-    if (!len) throw new RconError('Received empty response package');
+    let readPoint = 0;
+    if (!this._recvPacket) {
+      const len = data.readInt32LE(0);
+      if (!len) {
+        return console.error('empty response from RCON');
+      };
 
-    const id = data.readInt32LE(4);
-    if (this._timedOutRequests.includes(id)) {
-      this._timedOutRequests.splice(this._timedOutRequests.indexOf(id), 1);
-      return;
+      const id = data.readInt32LE(4);
+      const type = data.readInt32LE(8);
+      readPoint = 12;
+
+      this._recvPacket = { id, type, len, buffer: '' };
+
+      console.log(`begin recv of new packet: ${id}`);
     }
 
-    const type = data.readInt32LE(8);
+    let { id, type } = this._recvPacket;
 
     if (type === PacketType.RESPONSE_AUTH && id === -1) {
       this._callbacks.get(this._authPacketId)(null, new RconError('Authentication failed'));
     } else if (this._callbacks.has(id)) {
-      let str = data.toString('utf8', 12, len + 2);
-      if (str.charAt(str.length - 1) === '\n') {
-        str = str.substring(0, str.length - 1);
-      }
+      const isLast = data.readUInt16BE(data.length - 2) === 0x00;
+      this._recvPacket.buffer += data.toString('utf8', readPoint, data.length - (isLast ? 2 : 0));
 
-      this._callbacks.get(id)(str);
-    } else {
-      throw new RconError('Responded id did not match sent id');
+      if (isLast) {
+        const buffer = this._recvPacket.buffer;
+
+        if (buffer.charAt(buffer.length - 1) === '\n') {
+          buffer = buffer.substring(0, buffer.length - 1);
+        }
+  
+        this._recvPacket = null;
+        this._callbacks.get(id)(buffer);
+      }
     }
   }
 
