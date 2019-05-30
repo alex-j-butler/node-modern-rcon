@@ -96,17 +96,19 @@ class Rcon {
 
     if (type === PacketType.RESPONSE_AUTH && id === -1) {
       this._callbacks.get(this._authPacketId)(null, new RconError('Authentication failed'));
+    } else if (type === PacketType.RESPONSE_VALUE && id === this._authPacketId) {
+      this._recvPacket = null;
     } else if (this._callbacks.has(id)) {
       const isLast = data.readUInt16BE(data.length - 2) === 0x00;
       this._recvPacket.buffer += data.toString('utf8', readPoint, data.length - (isLast ? 2 : 0));
 
       if (isLast) {
-        const buffer = this._recvPacket.buffer;
+        var buffer = this._recvPacket.buffer;
 
         if (buffer.charAt(buffer.length - 1) === '\n') {
           buffer = buffer.substring(0, buffer.length - 1);
         }
-  
+
         this._recvPacket = null;
         this._callbacks.get(id)(buffer);
       }
